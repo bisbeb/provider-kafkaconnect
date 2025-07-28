@@ -1,0 +1,99 @@
+# Makefile.podman - Optimized for Podman on macOS
+
+include build/makelib/local.mk
+
+.PHONY: podman-setup
+podman-setup: ## Setup Podman for development
+	@echo "Checking Podman machine status..."
+	@podman machine list | grep -q "Currently running" || (echo "Starting Podman machine..." && podman machine start)
+	@echo "Podman is ready!"
+
+.PHONY: podman-login
+podman-login: ## Login to GitHub Container Registry
+	@echo "Logging into ghcr.io..."
+	@echo "${GITHUB_TOKEN}" | podman login ghcr.io -u taababj1 --password-stdin
+
+.PHONY: dev-build
+dev-build: podman-setup ## Fast build for development (single platform)
+	@echo "Building for development..."
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o bin/provider cmd/provider/main.go
+	podman build \
+		--platform linux/arm64 \
+		--format docker \
+		-t $(CONTROLLER_IMG):$(VERSION) \
+		-f Dockerfile \
+		.
+
+.PHONY: dev-push
+dev-push: dev-build ## Push development image
+	podman push $(CONTROLLER_IMG):$(VERSION)
+
+.PHONY: multi-build
+multi-build: podman-setup ## Multi-platform build
+	@echo "Building multi-platform image..."
+	# Build for AMD64
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o bin/provider-amd64 cmd/provider/main.go
+	# Build for ARM64  
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o bin/provider-arm64 cmd/provider/main.go
+	
+	# Create multi-platform image using manifest
+	podman build --platform linux/amd64 --format docker -t $(CONTROLLER_IMG):$(VERSION)-amd64 -f Dockerfile.multiarch --build-arg ARCH=amd64 .
+	podman build --platform linux/arm64 --format docker -t $(CONTROLLER_IMG):$(VERSION)-arm64 -f Dockerfile.multiarch --build-arg ARCH=arm64 .
+	
+	# Push both images
+	podman push $(CONTROLLER_IMG):$(VERSION)-amd64
+	podman push $(CONTROLLER_IMG):$(VERSION)-arm64
+	
+	# Create and push manifest
+	podman manifest create $(CONTROLLER_IMG):$(VERSION)
+	podman manifest add $(CONTROLLER_IMG):$(VERSION) $(CONTROLLER_IMG):$(VERSION)-amd64
+	podman manifest add $(CONTROLLER_IMG):$(VERSION) $(CONTROLLER_IMG):$(VERSION)-arm64
+	podman manifest push $(CONTROLLER_IMG):$(VERSION) docker://$(CONTROLLER_IMG):$(VERSION)
+
+.PHONY: xpkg-build
+xpkg-build: podman-setup ## Build Crossplane package
+	@echo "Building Crossplane package..."
+	# Ensure image exists locally
+	@$(MAKE) dev-build
+	
+	# Tag image for xpkg build
+	podman tag $(CONTROLLER_IMG):$(VERSION) $(PROJECT_NAME):$(VERSION)
+	
+	# Build package using kubectl-crossplane
+	kubectl crossplane build provider \
+		--package-file=$(PROJECT_NAME)-$(VERSION).xpkg \
+		--package-root=./package
+
+.PHONY: xpkg-push
+xpkg-push: xpkg-build ## Push Crossplane package
+	@echo "Pushing Crossplane package..."
+	kubectl crossplane push provider \
+		$(BUILD_REGISTRY)/$(PROJECT_NAME):$(VERSION) \
+		-f $(PROJECT_NAME)-$(VERSION).xpkg
+
+.PHONY: install-local
+install-local: ## Install provider in current cluster
+	@echo "Installing provider locally..."
+	kubectl crossplane install provider $(CONTROLLER_IMG):$(VERSION)
+
+.PHONY: run-local
+run-local: generate ## Run provider locally (for debugging)
+	go run cmd/provider/main.go \
+		--debug \
+		--poll-interval=10s \
+		--provider-config-dir=$${HOME}/.provider-kafkaconnect
+
+.PHONY: clean-images
+clean-images: ## Clean up Podman images
+	@echo "Cleaning up images..."
+	podman image prune -f
+	podman rmi $$(podman images -q $(CONTROLLER_IMG)) 2>/dev/null || true
+
+# Include original Makefile but override specific targets
+include Makefile
+
+# Override the original build target
+build: dev-build
+
+# Override the docker-build target
+docker-build: dev-build

@@ -1,0 +1,20 @@
+	github.com/crossplane/provider-kafkaconnect/cmd/provider		coverage: 0.0% of statements
+	github.com/crossplane/provider-kafkaconnect/internal/clients/kafkaconnect		coverage: 0.0% of statements
+	github.com/crossplane/provider-kafkaconnect/internal/controller		coverage: 0.0% of statements
+	github.com/crossplane/provider-kafkaconnect/internal/controller/config		coverage: 0.0% of statements
+=== RUN   TestObserve
+--- PASS: TestObserve (0.00s)
+PASS
+coverage: 0.0% of statements
+ok  	github.com/crossplane/provider-kafkaconnect/internal/controller/connector	0.526s	coverage: 0.0% of statements
+=== RUN   TestObserve
+--- PASS: TestObserve (0.00s)
+PASS
+coverage: 0.0% of statements
+ok  	github.com/crossplane/provider-kafkaconnect/internal/controller/connectorplugin	0.784s	coverage: 0.0% of statements
+?   	github.com/crossplane/provider-kafkaconnect/internal/features	[no test files]
+?   	github.com/crossplane/provider-kafkaconnect/internal/version	[no test files]
+	github.com/crossplane/provider-kafkaconnect/apis		coverage: 0.0% of statements
+?   	github.com/crossplane/provider-kafkaconnect/apis/kafkaconnect	[no test files]
+	github.com/crossplane/provider-kafkaconnect/apis/kafkaconnect/v1alpha1		coverage: 0.0% of statements
+	github.com/crossplane/provider-kafkaconnect/apis/v1alpha1		coverage: 0.0% of statements
